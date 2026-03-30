@@ -6,8 +6,7 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-app.get("/", (req, res) => {
-  res.send(`<!DOCTYPE html>
+const HTML_PAGE = `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8"/>
@@ -155,22 +154,27 @@ let myTeamNameInput = "";
 // WEBSOCKET
 // ══════════════════════════════════════
 const proto = location.protocol === "https:" ? "wss:" : "ws:";
-const ws = new WebSocket(\`\${proto}//\${location.host}\`);
+let ws;
+function connectWS() {
+  ws = new WebSocket(proto + "//" + location.host);
+  ws.onopen = () => {
+    document.getElementById("connStatus").textContent = "Connecté";
+    document.getElementById("connStatus").classList.remove("off");
+  };
+  ws.onclose = () => {
+    document.getElementById("connStatus").textContent = "Reconnexion...";
+    document.getElementById("connStatus").classList.add("off");
+    setTimeout(connectWS, 2000);
+  };
+  ws.onerror = () => {
+    document.getElementById("connStatus").textContent = "Erreur réseau";
+    document.getElementById("connStatus").classList.add("off");
+  };
+  ws.onmessage = onMessage;
+}
+connectWS();
 
-ws.onopen = () => {
-  document.getElementById("connStatus").textContent = "Connecté";
-  document.getElementById("connStatus").classList.remove("off");
-};
-ws.onclose = () => {
-  document.getElementById("connStatus").textContent = "Déconnecté — rechargez";
-  document.getElementById("connStatus").classList.add("off");
-};
-ws.onerror = () => {
-  document.getElementById("connStatus").textContent = "Erreur réseau";
-  document.getElementById("connStatus").classList.add("off");
-};
-
-ws.onmessage = (evt) => {
+function onMessage(evt) {
   const msg = JSON.parse(evt.data);
 
   if (msg.type === "reset") { location.reload(); return; }
@@ -193,15 +197,14 @@ ws.onmessage = (evt) => {
 
   if (msg.type === "state") {
     serverState = msg;
-    // Sync phase
     if (msg.phase === "waiting" && phase !== "team-name") phase = "waiting";
     if (msg.phase === "game") phase = "game";
     if (msg.phase === "end") phase = "end";
     render();
   }
-};
+}
 
-function send(obj) { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
+function send(obj) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
 
 // ══════════════════════════════════════
 // TIMER DISPLAY (live update without full re-render)
@@ -549,7 +552,7 @@ function renderHostPanel(teams, q, st) {
       <button class="btn-sm" onclick="hostAddTime()">+15s</button>
     </div>
     <button class="btn-green" \${canReveal?'':'disabled'} onclick="hostReveal()">Révéler les réponses + preuve</button>
-    \${!canReveal?\`<div class="rev-hint">\${!allAnswered&&!st.timerDone?'En attente des équipes / fin du timer...':!allCashOk?'Validez les réponses cash d\'abord':''}</div>\`:''}
+    \${!canReveal?\`<div class="rev-hint">\${!allAnswered&&!st.timerDone?'En attente des équipes / fin du timer...':!allCashOk?'Validez les réponses cash d\\'abord':''}</div>\`:''}
   </div>\` : \`<div class="rev-area"><span class="tag tag-ok">Réponses révélées</span></div>\`;
 
   return \`<div class="host-panel">
@@ -579,8 +582,8 @@ render();
 </script>
 </body>
 </html>
-`);
-});
+`;
+app.get("/", (req, res) => res.send(HTML_PAGE));
 
 // ═══════════════════════════════════════════
 // GAME STATE
@@ -951,4 +954,5 @@ const QUESTIONS = {
 };
 
 const PORT = process.env.PORT || 3000;
+console.log("Server starting on port:", PORT);
 server.listen(PORT, () => console.log(`Quiz Coran en ligne sur le port ${PORT}`));
