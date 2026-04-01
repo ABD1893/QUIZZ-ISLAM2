@@ -11,7 +11,7 @@ const HTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>Quiz Coran - Version Corrigée</title>
+<title>Quiz Coran - Version Finale Corrigée</title>
 <style>
 :root{--gold:#c9a84c;--gold-light:#f0d080;--dark:#1a1a2e;--card:#ffffff;--bg:#f5f3ee;}
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -26,13 +26,14 @@ body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);min-hei
 .btn-gold{background:linear-gradient(135deg,var(--gold),var(--gold-light));color:#1a1a00;}
 .btn-outline{background:#fff;border:1.5px solid #ddd;color:#555;}
 .q-box{background:var(--card);border-radius:15px;border:1px solid #e8e4da;padding:1rem 1.3rem;margin-bottom:.7rem;text-align:center;}
-.q-text{font-size:16px;font-weight:700;line-height:1.6;color:var(--dark);}
-.mode-card{padding:12px;border-radius:10px;border:1.5px solid #e0ddd6;background:#faf9f6;cursor:pointer;display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
-.mode-card:hover{border-color:var(--gold);}
-.proof-box{background:#f0faf5;border:1px solid #b0e0c8;padding:1rem;border-radius:12px;margin:10px 0;font-size:13px;text-align:left;}
+.q-text{font-size:15px;font-weight:700;line-height:1.6;color:var(--dark);}
+.proof-box{background:#f0faf5;border:1px solid #b0e0c8;padding:1rem;border-radius:12px;margin:10px 0;font-size:13px;text-align:left;color:#1a4a30;}
+.mode-card{padding:12px;border-radius:10px;border:1.5px solid #e0ddd6;background:#faf9f6;cursor:pointer;display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;transition:0.2s;}
+.mode-card:hover{border-color:var(--gold);background:#fffbe6;}
 .conn{position:fixed;bottom:10px;right:10px;font-size:11px;padding:4px 11px;border-radius:99px;z-index:999;}
-.conn.ok{background:#e6f9f0;color:#1a6641;}
-.conn.off{background:#fdecea;color:#8b1a1a;}
+.conn.ok{background:#e6f9f0;color:#1a6641;border:1px solid #5ecb9a;}
+.conn.off{background:#fdecea;color:#8b1a1a;border:1px solid #f5a0a0;}
+.inp-sel{width:100%;padding:10px;border-radius:10px;border:1.5px solid #ddd;margin-bottom:15px;}
 </style>
 </head>
 <body>
@@ -41,30 +42,29 @@ body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);min-hei
 
 <script>
 let role=null, myTeamIdx=null, serverState=null;
-let phase="entry", pinEntry="", pinError="";
-let myTeamNameInput="", myMemberInputs=[""];
-let timerVal=0;
 
 const ws = new WebSocket((location.protocol==="https:"?"wss:":"ws:")+"//"+location.host);
 ws.onopen=()=>document.getElementById("conn").className="conn ok";
 ws.onmessage=(e)=>{
     const msg=JSON.parse(e.data);
     if(msg.type==="state"){ serverState=msg; render(); }
-    if(msg.type==="host-auth-ok"){ role="host"; phase="setup"; render(); }
-    if(msg.type==="team-auth-ok"){ role="team"; myTeamIdx=msg.teamIdx; phase="waiting"; render(); }
+    if(msg.type==="host-auth-ok"){ role="host"; render(); }
+    if(msg.type==="team-auth-ok"){ role="team"; myTeamIdx=msg.teamIdx; render(); }
 };
 
 function send(obj){ ws.send(JSON.stringify(obj)); }
 
 function render(){
     const app=document.getElementById("app");
-    if(!serverState && phase==="entry"){
+    if(!serverState) return;
+
+    if(role===null){
         app.innerHTML = \`
             <div class="card">
                 <div class="logo">QUIZ<span>CORAN</span></div>
-                <p>Bienvenue, choisissez votre rôle</p><br>
-                <button class="btn btn-gold" onclick="send({type:'host-auth', pin:'1234'})">HÔTE (Admin)</button>
-                <button class="btn btn-dark" onclick="phase='join-pin';render();">ÉQUIPE (Joueur)</button>
+                <p>Choisissez votre accès</p><br>
+                <button class="btn btn-gold" onclick="send({type:'host-auth', pin:'1234'})">ACCÈS HÔTE</button>
+                <button class="btn btn-dark" onclick="role='team';render();">ÉQUIPE PARTICIPANTE</button>
             </div>\`;
         return;
     }
@@ -73,50 +73,61 @@ function render(){
         if(serverState.phase==="waiting"){
             app.innerHTML = \`
                 <div class="card">
-                    <h2>Configuration</h2>
+                    <h2>Configuration</h2><br>
                     <p>Nombre d'équipes :</p>
-                    <select id="nTeams" class="btn btn-outline">
+                    <select id="nTeams" class="inp-sel">
                         <option value="1">1 Équipe</option>
                         <option value="2">2 Équipes</option>
                         <option value="3" selected>3 Équipes</option>
                         <option value="4">4 Équipes</option>
                     </select>
-                    <button class="btn btn-gold" onclick="send({type:'start-game', config:{numTeams:document.getElementById('nTeams').value}})">LANCER LE JEU</button>
+                    <button class="btn btn-gold" onclick="send({type:'start-game', numTeams:parseInt(document.getElementById('nTeams').value)})">DÉMARRER</button>
                 </div>\`;
-        } else if(serverState.phase==="question"){
-            const q = serverState.currentQuestion;
+        } else {
+            const q = serverState.questions[serverState.currentQIdx];
             app.innerHTML = \`
                 <div class="card-wide">
-                    <div class="q-box">
-                        <div class="q-text">\${q.q}</div>
-                    </div>
-                    \${serverState.showQuestion ? \`
-                        <div class="proof-box"><strong>Réponse correcte :</strong> \${q.opts[q.ans]}<br><br>\${q.proof}</div>
+                    <div style="color:var(--gold); font-weight:800; font-size:12px;">QUESTION \${serverState.currentQIdx + 1}</div>
+                    <div class="q-box"><div class="q-text">\${q.q}</div></div>
+                    \${serverState.showQuestionToPlayers ? \`
+                        <div class="proof-box"><strong>Réponse :</strong> \${q.opts[q.ans]}<br><br><strong>Preuve :</strong> \${q.proof}</div>
                         <button class="btn btn-dark" onclick="send({type:'next-question'})">QUESTION SUIVANTE</button>
                     \` : \`
-                        <button class="btn btn-gold" onclick="send({type:'reveal-question'})">AFFICHER RÉPONSE POUR TOUS</button>
+                        <button class="btn btn-gold" onclick="send({type:'reveal-to-players'})">AFFICHER LA QUESTION AUX JOUEURS</button>
                     \`}
                 </div>\`;
         }
-    } else if(role==="team"){
-        const team = serverState.teams[myTeamIdx];
-        if(serverState.phase==="question"){
-            app.innerHTML = \`
-                <div class="card">
-                    <h3>Équipe: \${team.name} | Score: \${team.score}</h3>
-                    <hr><br>
-                    \${!serverState.showQuestion ? \`
-                        <p>L'hôte lit la question...</p>
-                        <div class="q-box" style="filter:blur(4px); opacity:0.5;">\${serverState.currentQuestion.q}</div>
-                    \` : \`
-                        <div class="q-box">\${serverState.currentQuestion.q}</div>
-                        \${!team.answered ? \`
-                            <div class="mode-card" onclick="send({type:'select-mode', mode:'square'})"><span>Carré (4 choix)</span> <strong>3 pts</strong></div>
-                            <div class="mode-card" onclick="send({type:'select-mode', mode:'duo'})"><span>Duo (2 choix)</span> <strong>1 pt</strong></div>
-                            <div class="mode-card" onclick="send({type:'select-mode', mode:'cash'})"><span>Cash (Saisie directe)</span> <strong>5 pts</strong></div>
-                        \` : \`<p>Réponse enregistrée. Attente des autres...</p>\`}
-                    \`}
-                </div>\`;
+    } 
+    
+    else if(role==="team"){
+        if(myTeamIdx === null){
+            let btns = "";
+            serverState.teams.forEach((t, i) => { btns += \`<button class="btn btn-outline" onclick="send({type:'select-team', idx:\${i}})">\${t.name}</button>\`; });
+            app.innerHTML = \`<div class="card"><h2>Choisissez votre équipe</h2><br>\${btns}</div>\`;
+        } else {
+            const myTeam = serverState.teams[myTeamIdx];
+            if(serverState.phase==="waiting"){
+                app.innerHTML = \`<div class="card"><h2>Prêt !</h2><p>Attente du lancement...</p></div>\`;
+            } else {
+                const q = serverState.questions[serverState.currentQIdx];
+                app.innerHTML = \`
+                    <div class="card">
+                        <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:10px;">
+                            <span>\${myTeam.name}</span><span>Score: \${myTeam.score}</span>
+                        </div>
+                        \${!serverState.showQuestionToPlayers ? \`
+                            <div class="q-box" style="filter:blur(5px); opacity:0.3;">\${q.q}</div>
+                            <p>L'hôte lit la question...</p>
+                        \` : \`
+                            <div class="q-box"><div class="q-text">\${q.q}</div></div>
+                            \${!myTeam.answered ? \`
+                                <div class="mode-card" onclick="send({type:'answer', teamIdx:\${myTeamIdx}, mode:'cash'})"><span>Cash</span><strong>5 pts</strong></div>
+                                <div class="mode-card" onclick="send({type:'answer', teamIdx:\${myTeamIdx}, mode:'square'})"><span>Carré</span><strong>3 pts</strong></div>
+                                <div class="mode-card" onclick="send({type:'answer', teamIdx:\${myTeamIdx}, mode:'duo'})"><span>Duo</span><strong>1 pt</strong></div>
+                            \` : \`<p>Réponse envoyée !</p>\`}
+                        \`}
+                    </div>\`;
+            }
         }
     }
 }
@@ -127,70 +138,54 @@ function render(){
 // --- LOGIQUE SERVEUR ---
 
 let state = {
-    phase: "waiting", // waiting, question, result, final
-    teams: [],
+    phase: "waiting",
     currentQIdx: 0,
-    showQuestion: false,
+    showQuestionToPlayers: false,
+    teams: [],
     questions: [
-        {q:"Quel est le premier pilier de l'Islam ?", opts:["La prière","La Shahada","Le Jeûne","La Zakat"], ans:1, proof:"La profession de foi (Shahada) est le fondement de l'entrée en Islam."},
-        {q:"Combien y a-t-il de sourates dans le Coran ?", opts:["110","114","120","112"], ans:1, proof:"Le Coran est composé de 114 chapitres appelés Sourates."},
-        // Ajoutez vos autres questions ici
+        {q:"Quelle est la première sourate du Coran ?", opts:["Al-Baqarah","Al-Fatiha","An-Nas","Al-Ikhlas"], ans:1, proof:"Al-Fatiha est l'ouverture du Livre."},
+        {q:"Combien de sourates y a-t-il dans le Coran ?", opts:["110","112","114","120"], ans:2, proof:"Le Coran contient 114 sourates."},
+        // J'ai réduit ici pour l'exemple, mais remettez vos 50 questions ici
     ]
 };
 
 wss.on("connection", (ws) => {
     ws.on("message", (data) => {
         const msg = JSON.parse(data);
+        if(msg.type === "host-auth") ws.send(JSON.stringify({type:"host-auth-ok"}));
+        if(msg.type === "select-team") ws.send(JSON.stringify({type:"team-auth-ok", teamIdx: msg.idx}));
         
-        if(msg.type === "host-auth" && msg.pin === "1234") {
-            ws.send(JSON.stringify({type: "host-auth-ok"}));
+        if(msg.type === "start-game"){
+            state.phase = "playing";
+            state.teams = Array.from({length: msg.numTeams}, (_, i) => ({ name: "Équipe "+(i+1), score: 0, answered: false }));
             broadcastState();
         }
 
-        if(msg.type === "start-game") {
-            state.phase = "question";
-            state.teams = Array.from({length: msg.config.numTeams}, (_, i) => ({
-                name: "Équipe " + (i+1),
-                score: 0,
-                answered: false
-            }));
-            state.currentQIdx = 0;
-            state.showQuestion = false;
+        if(msg.type === "reveal-to-players") {
+            state.showQuestionToPlayers = true;
             broadcastState();
         }
 
-        if(msg.type === "reveal-question") {
-            state.showQuestion = true;
+        if(msg.type === "answer") {
+            state.teams[msg.teamIdx].answered = true;
+            const pts = msg.mode === "cash" ? 5 : (msg.mode === "square" ? 3 : 1);
+            state.teams[msg.teamIdx].score += pts;
             broadcastState();
         }
 
         if(msg.type === "next-question") {
             state.currentQIdx++;
-            state.showQuestion = false;
+            state.showQuestionToPlayers = false;
             state.teams.forEach(t => t.answered = false);
             broadcastState();
         }
-        
-        if(msg.type === "select-mode") {
-            // Logique de réponse simplifiée pour l'exemple
-            const t = state.teams.find((_, i) => i === msg.teamIdx); // Simulation simplifiée
-            broadcastState();
-        }
     });
-
-    ws.send(JSON.stringify({type: "state", ...state, currentQuestion: state.questions[state.currentQIdx]}));
+    ws.send(JSON.stringify({type:"state", ...state}));
 });
 
 function broadcastState() {
-    const payload = JSON.stringify({
-        type: "state", 
-        ...state, 
-        currentQuestion: state.questions[state.currentQIdx]
-    });
-    wss.clients.forEach(client => {
-        if(client.readyState === WebSocket.OPEN) client.send(payload);
-    });
+    wss.clients.forEach(c => { if(c.readyState === WebSocket.OPEN) c.send(JSON.stringify({type:"state", ...state})); });
 }
 
 app.get("/", (req, res) => res.send(HTML));
-server.listen(3000, () => console.log("Serveur prêt sur http://localhost:3000"));
+server.listen(3000, () => console.log("Serveur lancé sur le port 3000"));
